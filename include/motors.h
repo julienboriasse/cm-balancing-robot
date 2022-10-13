@@ -2,6 +2,9 @@
  * Motors 
 */
 
+#define MOTOR_LEFT 0
+#define MOTOR_RIGHT 1
+
 #define STEP_PER_ROTATION 200
 #define STEP_RESOLUTION 16
 #define EDGE_PER_CYCLE 2
