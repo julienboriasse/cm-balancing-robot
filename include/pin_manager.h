@@ -1,5 +1,5 @@
 /**
- * Configure pin mapping
+ * Pin Manager
 */
 
 /* Left Motor */
@@ -18,10 +18,18 @@
 #define PIN_MOTOR_RIGHT_STEP p12
 #define PIN_MOTOR_RIGHT_DIR p11
 
+/* IMU CMPS12 */
+#define IMU_CMPS12_SDA p28
+#define IMU_CMPS12_SCL p27
+
 /* Accelerometer */
 #define PIN_ADXL_X p18
 #define PIN_ADXL_Y p19
 #define PIN_ADXL_Z p20
+
+/* UART */
+#define TARGET_TX_PIN USBTX
+#define TARGET_RX_PIN USBRX
 
 /* Unused pins must be set as Inputs (good practice) */
 #define UNUSED_PIN_P5 p5
