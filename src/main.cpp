@@ -40,10 +40,10 @@ int imu_cmps12_address = CMPS12_DEFAULT_I2C_ADDRESS;
 char imu_cmps12_data[31];
 
 /* PID 1 */
-int roll = 0;
-int rollSP = 0;
-int rollError = 0;
-int rollErrorSum = 0;
+float roll = 0;
+float rollSP = 0;
+float rollError = 0;
+float rollErrorSum = 0;
 int u = 0;               // command to be sent to motors
 uint32_t delta_t = 1000; // time interval for PID computation
 
@@ -105,10 +105,10 @@ int main()
     if (display_flag)
     {
       printf("Monitoring: ");
-      printf("Roll=%5d\t", roll);
-      printf("rollSP=%5d\t", rollSP);
-      printf("rollError=%5d\t", rollError);
-      printf("rollErrorSum=%5d\t", rollErrorSum);
+      printf("Roll=%5.2f\t", roll);
+      printf("rollSP=%5.2f\t", rollSP);
+      printf("rollError=%5.2f\t", rollError);
+      printf("rollErrorSum=%5.2f\t", rollErrorSum);
       printf("u=%5d\t", u);
       printf("absolute_position_error=%5ld\t", absolute_position_error);
       printf("absolute_position_delta_error=%5ld\t", absolute_position_delta_error);
