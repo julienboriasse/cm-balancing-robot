@@ -3,6 +3,7 @@
 #include "sensors.h"
 #include "motors.h"
 #include "pid.h"
+#include <stepper.h>
 
 #define PI 3.141516
 
@@ -25,18 +26,8 @@ DigitalIn pin_p17(UNUSED_PIN_P17);
 static BufferedSerial serial_port(TARGET_TX_PIN, TARGET_RX_PIN, 115200);
 
 /* Motors */
-DigitalOut motor_left_enable(PIN_MOTOR_LEFT_ENABLE);
-DigitalOut motor_left_ms1(PIN_MOTOR_LEFT_MS1);
-DigitalOut motor_left_ms2(PIN_MOTOR_LEFT_MS2);
-DigitalOut motor_left_ms3(PIN_MOTOR_LEFT_MS3);
-DigitalOut motor_left_step(PIN_MOTOR_LEFT_STEP);
-DigitalOut motor_left_dir(PIN_MOTOR_LEFT_DIR);
-DigitalOut motor_right_enable(PIN_MOTOR_RIGHT_ENABLE);
-DigitalOut motor_right_ms1(PIN_MOTOR_RIGHT_MS1);
-DigitalOut motor_right_ms2(PIN_MOTOR_RIGHT_MS2);
-DigitalOut motor_right_ms3(PIN_MOTOR_RIGHT_MS3);
-DigitalOut motor_right_step(PIN_MOTOR_RIGHT_STEP);
-DigitalOut motor_right_dir(PIN_MOTOR_RIGHT_DIR);
+stepper motor_left(PIN_MOTOR_LEFT_ENABLE, PIN_MOTOR_LEFT_MS1, PIN_MOTOR_LEFT_MS2, PIN_MOTOR_LEFT_MS3, PIN_MOTOR_LEFT_STEP, PIN_MOTOR_LEFT_DIR);
+stepper motor_right(PIN_MOTOR_RIGHT_ENABLE, PIN_MOTOR_RIGHT_MS1, PIN_MOTOR_RIGHT_MS2, PIN_MOTOR_RIGHT_MS3, PIN_MOTOR_RIGHT_STEP, PIN_MOTOR_RIGHT_DIR);
 Timeout motors_timeout;
 
 /* IMU CMPS 12 sensor */
@@ -58,24 +49,68 @@ int main()
 
   initializeRobot();
 
-  motors_timeout.attach(&motorsTimeoutISR, 2s); // Starting motors 2 seconds after power up
+  // motors_timeout.attach(&motorsTimeoutISR, 2s); // Starting motors 2 seconds after power up
 
+  int direction = 1;
   while (1)
   {
-    // put your main code here, to run repeatedly:
+
+    /* Change direction */
+    direction = !direction;
+    motor_left.direction(direction);
+    motor_right.direction(!direction);
+
+    /* Test all ratios */
+    int ratio = 1;
+    while (ratio <= 16)
+    {
+      motor_left.microstep(ratio);
+      motor_right.microstep(ratio);
+      printf("Ratio = 1:%d\r\n", ratio);
+
+      for (int j = 1; j < 100*ratio; j++)
+      {
+        motor_left.step(1);
+        motor_right.step(1);
+        ThisThread::sleep_for(10ms/ratio);
+        motor_left.step(0);
+        motor_right.step(0);
+        ThisThread::sleep_for(10ms/ratio);
+      }
+
+      switch (ratio)
+      {
+      case 1:
+        ratio = 2;
+        break;
+      case 2:
+        ratio = 4;
+        break;
+      case 4:
+        ratio = 8;
+        break;
+      case 8:
+        ratio = 16;
+        break;
+      case 16:
+        ratio = 32;
+        break;
+      }
+    }
   }
 }
 
-/** 
+/**
  * ISR functions
  * */
 
-void motorsTimeoutISR(void) {
+void motorsTimeoutISR(void)
+{
   // do nothing (yet)
 }
 
-/** 
- * Initialization functions 
+/**
+ * Initialization functions
  * */
 
 uint8_t initializeRobot(void)
@@ -93,23 +128,16 @@ uint8_t initializeMotor(uint8_t motor)
 {
   if (motor == MOTOR_LEFT)
   {
-
-    motor_left_ms1 = 1;
-    motor_left_ms2 = 1;
-    motor_left_ms3 = 1;
-
-    motor_left_enable = MOTOR_DISABLE;
-
+    motor_left.microstep(1);
+    motor_left.direction(MOTOR_LEFT_DIRECTION_FORWARD);
+    motor_left.enable();
     return true;
   }
   if (motor == MOTOR_RIGHT)
   {
-
-    motor_right_ms1 = 1;
-    motor_right_ms2 = 1;
-    motor_right_ms3 = 1;
-
-    motor_right_enable = MOTOR_DISABLE;
+    motor_right.microstep(1);
+    motor_right.direction(MOTOR_RIGHT_DIRECTION_FORWARD);
+    motor_right.enable();
 
     return true;
   }
