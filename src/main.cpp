@@ -9,10 +9,14 @@
 
 /* Function definitions */
 uint8_t initializeRobot(void);
+uint8_t initializeMotors(void);
+uint8_t initializeMotor(uint8_t motor);
 uint8_t initializeUnusedPins(void);
 uint8_t initializeAccelerometer(void);
-uint8_t initializeMotors(void);
 void motorsTimeoutISR(void);
+void displayISR(void);
+void sensorsISR(void);
+void absolutePositionISR(void);
 
 /* Unused pins */
 DigitalIn pin_p5(UNUSED_PIN_P5);
@@ -35,12 +39,40 @@ I2C imu_cmps12(IMU_CMPS12_SDA, IMU_CMPS12_SCL);
 int imu_cmps12_address = CMPS12_DEFAULT_I2C_ADDRESS;
 char imu_cmps12_data[31];
 
+/* PID 1 */
+int roll = 0;
+int rollSP = 0;
+int rollError = 0;
+int rollErrorSum = 0;
+int u = 0;               // command to be sent to motors
+uint32_t delta_t = 1000; // time interval for PID computation
+
+/* PID 2 */
+int32_t absolute_position = 0;
+int32_t absolute_position_sp = 0;
+int32_t absolute_position_delta_error = 0;
+int32_t absolute_position_error = 0;
+int32_t absolute_position_error_previous = 0;
+int32_t absolute_position_error_sum = 0;
+
 /* Accelerometer */
 AnalogIn adxl_x(PIN_ADXL_X);
 AnalogIn adxl_y(PIN_ADXL_Y);
 AnalogIn adxl_z(PIN_ADXL_Z);
 
-/* Sensor update data */
+/* LED */
+DigitalOut led1(LED1);
+DigitalOut led2(LED2);
+DigitalOut led3(LED3);
+DigitalOut led4(LED4);
+
+Ticker display_ticker;
+uint8_t display_flag = false;
+
+Ticker sensors_ticker;
+uint8_t sensors_flag = false;
+
+Ticker absolute_position_ticker;
 
 int main()
 {
@@ -49,16 +81,111 @@ int main()
 
   initializeRobot();
 
-  // motors_timeout.attach(&motorsTimeoutISR, 2s); // Starting motors 2 seconds after power up
+  display_ticker.attach(&displayISR, 1s);
+  sensors_ticker.attach(&sensorsISR, 10ms);
+  absolute_position_ticker.attach(&absolutePositionISR, 200ms);
+  motors_timeout.attach(&motorsTimeoutISR, 2s); // Starting motors 2 seconds after power up
+
+  while (1)
+  {
+    if (sensors_flag)
+    {
+      imu_cmps12.write(imu_cmps12_address, 0, 31);
+      imu_cmps12.read(imu_cmps12_address, imu_cmps12_data, sizeof(imu_cmps12_data));
+      int8_t roll_tmp = imu_cmps12_data[5];
+      if (roll_tmp > 90)
+      {
+        roll_tmp = roll_tmp - 255;
+      }
+      roll = roll_tmp;
+
+      sensors_flag = false;
+    }
+
+    if (display_flag)
+    {
+      printf("Monitoring: ");
+      printf("Roll=%5d\t", roll);
+      printf("rollSP=%5d\t", rollSP);
+      printf("rollError=%5d\t", rollError);
+      printf("rollErrorSum=%5d\t", rollErrorSum);
+      printf("u=%5d\t", u);
+      printf("absolute_position_error=%5ld\t", absolute_position_error);
+      printf("absolute_position_delta_error=%5ld\t", absolute_position_delta_error);
+      printf("\r\n");
+      display_flag = false;
+    }
+
+    if (abs(roll) > 25)
+    {
+      printf("Disable motors - Roll exceeds 25°\r\n");
+      motor_left.disable();
+      motor_right.disable();
+    }
+  }
 }
 
 /**
  * ISR functions
  * */
+void absolutePositionISR(void)
+{
+  absolute_position_error = absolute_position_sp - absolute_position;
+  absolute_position_error_sum = absolute_position_error + absolute_position_error;
+  absolute_position_delta_error = absolute_position_error - absolute_position_error_previous;
+
+  rollSP = absolute_position_error * KP_POSITION + absolute_position_error_sum * KI_POSITION + absolute_position_delta_error * KD_POSITION;
+  rollSP = rollSP > ROLL_SP_MAX ? ROLL_SP_MAX : rollSP;
+  rollSP = rollSP < -ROLL_SP_MAX ? -ROLL_SP_MAX : rollSP;
+  absolute_position_error_previous = absolute_position_error;
+}
 
 void motorsTimeoutISR(void)
 {
-  // do nothing (yet)
+  rollError = rollSP - roll;
+  rollErrorSum += rollError;
+
+  rollErrorSum = rollErrorSum > ROLL_ERROR_SUM_MAX ? ROLL_ERROR_SUM_MAX : rollErrorSum;
+  rollErrorSum = rollErrorSum < -ROLL_ERROR_SUM_MAX ? -ROLL_ERROR_SUM_MAX : rollErrorSum;
+
+  u = KP * rollError + KI * rollErrorSum; // degree per second
+  u = u > 20000 ? 20000 : u;
+  u = u < -20000 ? -20000 : u;
+  int vitesse_deg_s = u;
+
+  if (u != 0)
+  {
+    led2 = 0;
+    motors_timeout.attach_us(motorsTimeoutISR, 562500 / abs(vitesse_deg_s) / 16);
+
+    if (u < 0) 
+    {
+      absolute_position++;
+    }
+    else if (u > 0) {
+      absolute_position--;
+    }
+    motor_right.direction(u < 0);
+    motor_left.direction(!(u < 0));
+
+    motor_left.toggleStep();
+    motor_right.toggleStep();
+  }
+  else
+  {
+    led2 = 1;
+    motors_timeout.attach(motorsTimeoutISR, 10ms);
+  }
+}
+
+void displayISR(void)
+{
+  display_flag = true;
+}
+
+void sensorsISR(void)
+{
+  sensors_flag = true;
 }
 
 /**
@@ -76,29 +203,29 @@ uint8_t initializeRobot(void)
   return true;
 }
 
+uint8_t initializeMotors(void)
+{
+  return initializeMotor(MOTOR_LEFT) && initializeMotor(MOTOR_RIGHT);
+}
+
 uint8_t initializeMotor(uint8_t motor)
 {
   if (motor == MOTOR_LEFT)
   {
-    motor_left.microstep(1);
+    motor_left.microstep(16);
     motor_left.direction(MOTOR_LEFT_DIRECTION_FORWARD);
     motor_left.enable();
     return true;
   }
   if (motor == MOTOR_RIGHT)
   {
-    motor_right.microstep(1);
+    motor_right.microstep(16);
     motor_right.direction(MOTOR_RIGHT_DIRECTION_FORWARD);
     motor_right.enable();
 
     return true;
   }
   return false;
-}
-
-uint8_t initializeMotors(void)
-{
-  return initializeMotor(MOTOR_LEFT) && initializeMotor(MOTOR_RIGHT);
 }
 
 uint8_t initializeAccelerometer(void)

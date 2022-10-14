@@ -10,7 +10,8 @@ class stepper
 {
 public:
     stepper(PinName _en, PinName ms1, PinName ms2, PinName ms3, PinName _stepPin, PinName _dir);
-    void step(int edge);
+    void setStep(int edge);
+    void toggleStep();
     void direction(int direction);
     void microstep(int ratio);
     void enable();

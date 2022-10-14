@@ -9,9 +9,14 @@ stepper::stepper(PinName _en, PinName ms1, PinName ms2, PinName ms3, PinName _st
 
 }
 
-void stepper::step(int edge)
+void stepper::setStep(int edge)
 {
     stepPin = edge;
+}
+
+void stepper::toggleStep()
+{
+    stepPin = !stepPin;
 }
 
 void stepper::direction(int direction)
