@@ -40,10 +40,10 @@ int imu_cmps12_address = CMPS12_DEFAULT_I2C_ADDRESS;
 char imu_cmps12_data[31];
 
 /* PID 1 */
-float roll = 0;
-float rollSP = 0;
-float rollError = 0;
-float rollErrorSum = 0;
+int roll = 0;
+int rollSP = 0;
+int rollError = 0;
+int rollErrorSum = 0;
 int u = 0;               // command to be sent to motors
 uint32_t delta_t = 1000; // time interval for PID computation
 
@@ -97,7 +97,7 @@ int main()
       {
         roll_tmp = roll_tmp - 255;
       }
-      roll = roll_tmp;
+      roll = roll_tmp * 100;
 
       sensors_flag = false;
     }
@@ -105,10 +105,10 @@ int main()
     if (display_flag)
     {
       printf("Monitoring: ");
-      printf("Roll=%5.2f\t", roll);
-      printf("rollSP=%5.2f\t", rollSP);
-      printf("rollError=%5.2f\t", rollError);
-      printf("rollErrorSum=%5.2f\t", rollErrorSum);
+      printf("Roll=%5d\t", roll);
+      printf("rollSP=%5d\t", rollSP);
+      printf("rollError=%5d\t", rollError);
+      printf("rollErrorSum=%5d\t", rollErrorSum);
       printf("u=%5d\t", u);
       printf("absolute_position_error=%5ld\t", absolute_position_error);
       printf("absolute_position_delta_error=%5ld\t", absolute_position_delta_error);
@@ -116,7 +116,7 @@ int main()
       display_flag = false;
     }
 
-    if (abs(roll) > 25)
+    if (abs(roll) > 25*100)
     {
       printf("Disable motors - Roll exceeds 25°\r\n");
       motor_left.disable();
@@ -134,7 +134,7 @@ void absolutePositionISR(void)
   absolute_position_error_sum = absolute_position_error + absolute_position_error;
   absolute_position_delta_error = absolute_position_error - absolute_position_error_previous;
 
-  rollSP = absolute_position_error * KP_POSITION + absolute_position_error_sum * KI_POSITION + absolute_position_delta_error * KD_POSITION;
+  rollSP = (absolute_position_error * KP_POSITION + absolute_position_error_sum * KI_POSITION + absolute_position_delta_error * KD_POSITION) * 100;
   rollSP = rollSP > ROLL_SP_MAX ? ROLL_SP_MAX : rollSP;
   rollSP = rollSP < -ROLL_SP_MAX ? -ROLL_SP_MAX : rollSP;
   absolute_position_error_previous = absolute_position_error;
@@ -148,7 +148,7 @@ void motorsTimeoutISR(void)
   rollErrorSum = rollErrorSum > ROLL_ERROR_SUM_MAX ? ROLL_ERROR_SUM_MAX : rollErrorSum;
   rollErrorSum = rollErrorSum < -ROLL_ERROR_SUM_MAX ? -ROLL_ERROR_SUM_MAX : rollErrorSum;
 
-  u = KP * rollError + KI * rollErrorSum; // degree per second
+  u = KP * rollError/100 + KI * rollErrorSum/100; // degree per second
   u = u > 20000 ? 20000 : u;
   u = u < -20000 ? -20000 : u;
   int vitesse_deg_s = u;

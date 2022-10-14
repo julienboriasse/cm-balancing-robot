@@ -10,7 +10,7 @@
 #define ROLL_ERROR_SUM_MAX 10000 // Limit integral term
 
 /* Loop 2 */
-#define KP_POSITION -0.002
+#define KP_POSITION -0.001
 #define KI_POSITION -0.0002
 #define KD_POSITION -0.0009
-#define ROLL_SP_MAX 10
+#define ROLL_SP_MAX 10*100
