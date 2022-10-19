@@ -6,7 +6,6 @@
 #include <stepper.h>
 
 #define PI 3.141516
-#define ROLL_SAMPLES_N 10
 
 /* Function definitions */
 uint8_t initializeRobot(void);
@@ -42,26 +41,31 @@ char imu_cmps12_data[31];
 
 /* PID 1 */
 int roll = 0;
-int roll_samples[ROLL_SAMPLES_N];
-int roll_samples_index = 0;
 int roll_set_point = 0;
 int roll_error = 0;
 int roll_error_sum = 0;
 int roll_error_previous = 0;
 int roll_error_delta = 0;
-int u = 0;               // command to be sent to motors
-uint32_t delta_t = 1000; // time interval for PID computation
-int u_p = 0;
-int u_i = 0;
-int u_d = 0;
+int roll_samples[ROLL_SAMPLES_N];
+int roll_samples_index = 0;
+int u = 0; // command to be sent to motors
+int u_roll_p = 0;
+int u_roll_i = 0;
+int u_roll_d = 0;
 
 /* PID 2 */
 int32_t absolute_position = 0;
-int32_t absolute_position_sp = 0;
-int32_t absolute_position_delta_error = 0;
+int32_t absolute_position_set_point = 0;
 int32_t absolute_position_error = 0;
-int32_t absolute_position_error_previous = 0;
 int32_t absolute_position_error_sum = 0;
+int32_t absolute_position_error_previous = 0;
+int32_t absolute_position_error_delta = 0;
+int absolute_position_samples[ROLL_SAMPLES_N];
+int absolute_position_samples_index = 0;
+
+int u_position_p = 0;
+int u_position_i = 0;
+int u_position_d = 0;
 
 /* Accelerometer */
 AnalogIn adxl_x(PIN_ADXL_X);
@@ -80,7 +84,8 @@ bool display_flag = false;
 Ticker sensors_ticker;
 bool sensors_flag = false;
 
-bool display_pid_flag = false;
+bool display_roll_pid_flag = false;
+bool display_absolution_position_pid_flag = false;
 
 Ticker absolute_position_ticker;
 
@@ -121,7 +126,7 @@ int main()
         roll_samples_sum += roll_samples[i];
       }
       roll = roll_samples_sum / ROLL_SAMPLES_N;
-      printf("R: %d°\r\n", roll);
+      // printf("R: %d°\r\n", roll);
 
       sensors_flag = false;
     }
@@ -143,12 +148,18 @@ int main()
       display_flag = false;
     }
 
-    if (display_pid_flag)
+    if (display_roll_pid_flag)
     {
-      printf("PID: %5d %5d %5d, E: %4d\r\n", u_p, u_i, u_d, roll_error);
-      display_pid_flag = false;
+      printf("PID: %5d %5d %5d, E: %4d\r\n", u_roll_p, u_roll_i, u_roll_d, roll_error);
+      display_roll_pid_flag = false;
     }
 
+    if (display_absolution_position_pid_flag)
+    {
+      printf("Pos: %5ld  Roll SP: %5d   Roll E: %5d\r\n", absolute_position, roll_set_point, roll_error);
+      printf("PID: %5d %5d %5d, E: %5ld\r\n", u_position_p, u_position_i, u_position_d, absolute_position_error);
+      display_absolution_position_pid_flag = false;
+    }
     if (abs(roll) > 25 * 100)
     {
       printf("Disable motors - Roll exceeds 25°\r\n");
@@ -163,16 +174,29 @@ int main()
  * */
 void absolutePositionISR(void)
 {
-  /*
-  absolute_position_error = absolute_position_sp - absolute_position;
-  absolute_position_error_sum = absolute_position_error + absolute_position_error;
-  absolute_position_delta_error = absolute_position_error - absolute_position_error_previous;
+ 
+  absolute_position_error = absolute_position_set_point - absolute_position;
+  if (absolute_position_error < 200)
+  {
+    roll_set_point = 0;
+  }
+  else
+  {
+    absolute_position_error_sum += absolute_position_error * POSITION_PID_DELTA_T;
 
-  roll_set_point = (absolute_position_error * KP_POSITION + absolute_position_error_sum * KI_POSITION + absolute_position_delta_error * KD_POSITION) * 100;
-  roll_set_point = roll_set_point > ROLL_SP_MAX ? ROLL_SP_MAX : roll_set_point;
-  roll_set_point = roll_set_point < -ROLL_SP_MAX ? -ROLL_SP_MAX : roll_set_point;
-  absolute_position_error_previous = absolute_position_error;
-  */
+    absolute_position_error_delta = (absolute_position - absolute_position_error_previous) / POSITION_PID_DELTA_T;
+    absolute_position_error_previous = absolute_position;
+
+    u_position_p = POSITION_KP * absolute_position_error;
+    u_position_i = POSITION_KI * absolute_position_error_sum;
+    u_position_d = POSITION_KD * absolute_position_error_delta;
+
+    roll_set_point = u_position_p + u_position_i + u_position_d;
+    roll_set_point = roll_set_point > ROLL_SP_MAX ? ROLL_SP_MAX : roll_set_point;
+    roll_set_point = roll_set_point < -ROLL_SP_MAX ? -ROLL_SP_MAX : roll_set_point;
+
+    display_absolution_position_pid_flag = true;
+  }
 }
 
 void motorsTimeoutISR(void)
@@ -186,13 +210,13 @@ void motorsTimeoutISR(void)
   roll_error_sum = roll_error_sum > ROLL_ERROR_SUM_MAX ? ROLL_ERROR_SUM_MAX : roll_error_sum;
   roll_error_sum = roll_error_sum < -ROLL_ERROR_SUM_MAX ? -ROLL_ERROR_SUM_MAX : roll_error_sum;
 
-  u_p = ROLL_KP * roll_error;
-  u_i = ROLL_KI * roll_error_sum;
-  u_d = ROLL_KD * roll_error_delta;
+  u_roll_p = ROLL_KP * roll_error;
+  u_roll_i = ROLL_KI * roll_error_sum;
+  u_roll_d = ROLL_KD * roll_error_delta;
 
-  display_pid_flag = true;
+  display_roll_pid_flag = false;
 
-  u = ROLL_K + (u_p + u_i + u_d) / 100; // hundred degree per second
+  u = ROLL_K + (u_roll_p + u_roll_i + u_roll_d) / 100; // hundred degree per second
   u = u > 20000 ? 20000 : u;
   u = u < -20000 ? -20000 : u;
 
